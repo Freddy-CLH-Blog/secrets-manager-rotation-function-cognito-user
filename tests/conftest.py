@@ -2,11 +2,23 @@
 Pytest fixtures go here.
 """
 
+import json
 from uuid import uuid4
 import pytest
 
 MOCK_SECRET_ID = "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-name-abc123"
 MOCK_CLIENT_REQUEST_TOKEN = "MyClientRequestToken-ABC123-XYZ987"
+MOCK_OLD_SECRET_VERSION_ID = "MyOldClientRequestToken-ABC123-XYZ987"
+MOCK_CLIENT_ID = "MyClientID"
+MOCK_USERNAME = "my-username"
+MOCK_PASSWORD = "MyPassword"
+MOCK_NEW_PASSWORD = "MyNewPassword"
+MOCK_SECRET_STRING = json.dumps(
+    {"clientId": MOCK_CLIENT_ID, "username": MOCK_USERNAME, "password": MOCK_PASSWORD}
+)
+MOCK_NEW_SECRET_STRING = json.dumps(
+    {"clientId": MOCK_CLIENT_ID, "username": MOCK_USERNAME, "password": MOCK_NEW_PASSWORD}
+)
 
 
 class MockContext:  # pylint: disable=too-few-public-methods
@@ -42,6 +54,30 @@ def mock_client_request_token():
     return MOCK_CLIENT_REQUEST_TOKEN
 
 
+@pytest.fixture
+def mock_old_secret_version_id():
+    """Secrets Manager rotation old secret version ID."""
+    return MOCK_OLD_SECRET_VERSION_ID
+
+
+@pytest.fixture
+def mock_client_id():
+    """Cognito Identity Provider client ID."""
+    return MOCK_CLIENT_ID
+
+
+@pytest.fixture
+def mock_secret_string():
+    """Secrets Manager secret string."""
+    return MOCK_SECRET_STRING
+
+
+@pytest.fixture
+def mock_new_secret_string():
+    """Secrets Manager new secret string."""
+    return MOCK_NEW_SECRET_STRING
+
+
 # =====
 # Secrets Manager rotation events
 # =====
@@ -56,6 +92,39 @@ def create_secret_event():
     return event
 
 
+@pytest.fixture
+def set_secret_event():
+    """Secrets Manager rotation set secret event."""
+    event = {
+        "Step": "setSecret",
+        "SecretId": MOCK_SECRET_ID,
+        "ClientRequestToken": MOCK_CLIENT_REQUEST_TOKEN,
+    }
+    return event
+
+
+@pytest.fixture
+def test_secret_event():
+    """Secrets Manager rotation test secret event."""
+    event = {
+        "Step": "testSecret",
+        "SecretId": MOCK_SECRET_ID,
+        "ClientRequestToken": MOCK_CLIENT_REQUEST_TOKEN,
+    }
+    return event
+
+
+@pytest.fixture
+def finish_secret_event():
+    """Secrets Manager rotation finish secret event."""
+    event = {
+        "Step": "finishSecret",
+        "SecretId": MOCK_SECRET_ID,
+        "ClientRequestToken": MOCK_CLIENT_REQUEST_TOKEN,
+    }
+    return event
+
+
 # =====
 # Secrets Manager API responses
 # =====
@@ -64,7 +133,10 @@ def describe_secret_response():
     """Secrets Manager DescribeSecret response"""
     response = {
         "RotationEnabled": True,
-        "VersionIdsToStages": {MOCK_CLIENT_REQUEST_TOKEN: ["AWSPENDING"]},
+        "VersionIdsToStages": {
+            MOCK_OLD_SECRET_VERSION_ID: ["AWSCURRENT"],
+            MOCK_CLIENT_REQUEST_TOKEN: ["AWSPENDING"],
+        },
     }
     return response
 
@@ -73,7 +145,7 @@ def describe_secret_response():
 def get_secret_value_response_current():
     """Secrets Manager GetSecretValue response with current secret"""
     response = {
-        "SecretString": "MyCurrentSecretString",
+        "SecretString": MOCK_SECRET_STRING,
     }
     return response
 
@@ -82,7 +154,7 @@ def get_secret_value_response_current():
 def get_secret_value_response_pending():
     """Secrets Manager GetSecretValue response with pending secret"""
     response = {
-        "SecretString": "MyPendingSecretString",
+        "SecretString": MOCK_NEW_SECRET_STRING,
     }
     return response
 
@@ -90,5 +162,54 @@ def get_secret_value_response_pending():
 @pytest.fixture
 def get_random_password_response():
     """Secrets Manager GetRandomPassword response"""
-    response = {"RandomPassword": "MyNewSecretString"}
+    response = {"RandomPassword": MOCK_NEW_PASSWORD}
+    return response
+
+
+# =====
+# Cognito Identity Provider API responses
+# =====
+@pytest.fixture
+def initiate_auth_response_no_challenge():
+    """Cognito Identity Provider initiate auth response"""
+    response = {
+        "AuthenticationResult": {
+            "AccessToken": "MyAccessToken",
+            "ExpiresIn": 43200,
+            "TokenType": "Bearer",
+            "RefreshToken": "MyRefreshToken",
+            "IdToken": "MyIdToken",
+        }
+    }
+    return response
+
+
+@pytest.fixture
+def initiate_auth_response_force_change_password():
+    """Cognito Identity Provider initiate auth response - force change password"""
+    response = {
+        "ChallengeName": "NEW_PASSWORD_REQUIRED",
+        "Session": "MySessionToken-ABC123",
+        "ChallengeParameters": {
+            "USER_ID_FOR_SRP": MOCK_USERNAME,
+            "requiredAttributes": "[]",
+            "userAttributes": json.dumps({"email": f"{MOCK_USERNAME}@example.com"}),
+        },
+    }
+    return response
+
+
+@pytest.fixture
+def respond_to_auth_challenge():
+    """Cognito Identity Provider respond to auth challenge response"""
+    response = {
+        "ChallengeParameters": {},
+        "AuthenticationResult": {
+            "AccessToken": "MyAccessToken",
+            "ExpiresIn": 43200,
+            "TokenType": "Bearer",
+            "RefreshToken": "MyRefreshToken",
+            "IdToken": "MyIdToken",
+        },
+    }
     return response
